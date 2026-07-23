@@ -1,0 +1,36 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+env:
+  TURBO_TELEMETRY_DISABLED: 1
+
+jobs:
+  build-and-verify:
+    name: Build & verify tagged release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+
+      # NOTE: publish/deploy steps are intentionally left as a placeholder.
+      # Wire this up to your artifact registry / deployment target when ready.
+      - name: Placeholder — publish step
+        run: echo "Add publish/deploy steps for tag ${{ github.ref_name }} here."

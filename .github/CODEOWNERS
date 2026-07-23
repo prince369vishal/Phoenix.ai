@@ -1,0 +1,29 @@
+# Each line is a file pattern followed by one or more owners.
+# These owners will be requested for review when someone opens a pull request
+# touching the matching files. Replace placeholders with real GitHub handles/teams.
+
+# Default owners for everything
+*                                   @your-org/platform-maintainers
+
+# Pipeline modules
+/packages/ingestion-connectors/     @your-org/platform-maintainers
+/packages/redaction-hardening/      @your-org/security-team
+/packages/extraction-engine/        @your-org/platform-maintainers
+/packages/inference-engine/         @your-org/platform-maintainers
+/packages/knowledge-graph/          @your-org/platform-maintainers
+/packages/reconciliation-engine/    @your-org/platform-maintainers
+/packages/okf-renderers/            @your-org/platform-maintainers
+/packages/gap-analysis/             @your-org/platform-maintainers
+/packages/drift-detection/          @your-org/platform-maintainers
+/packages/review-loop/              @your-org/platform-maintainers
+/packages/evaluation-harness/       @your-org/platform-maintainers
+/packages/orchestration/            @your-org/platform-maintainers
+/packages/shared/                   @your-org/platform-maintainers
+
+# Apps
+/apps/api/                          @your-org/backend-team
+/apps/web/                          @your-org/frontend-team
+
+# Governance & security-sensitive files require security sign-off
+/SECURITY.md                        @your-org/security-team
+/.github/                           @your-org/platform-maintainers

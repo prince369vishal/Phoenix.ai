@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Phoenix.ai — Agent Pipeline Demo</title>
+<style>
+  :root{
+    --bg:#0b0f17; --panel:#111826; --card:#161f2e; --border:#243044; --border-soft:#1c2637;
+    --text:#e7ecf3; --text-dim:#8b96a8; --text-mute:#5c6b82;
+    --mono:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:28px 20px 60px;}
+  .wrap{max-width:1180px;margin:0 auto;}
+  .hd{margin-bottom:18px;}
+  .hd .eyebrow{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-mute);margin-bottom:6px;}
+  .hd h1{font-size:21px;font-weight:600;margin:0 0 6px;}
+  .hd p{font-size:13.5px;color:var(--text-dim);margin:0;max-width:760px;line-height:1.55;}
+
+  .orch{background:linear-gradient(180deg,#171f36,#121a2c);border:1px solid #2a3556;border-radius:12px;padding:14px 18px;margin:18px 0;display:flex;align-items:center;gap:18px;flex-wrap:wrap;}
+  .orch .tag{background:#3730a3;color:#c7d2fe;font-size:11px;font-weight:600;padding:4px 10px;border-radius:20px;letter-spacing:.03em;}
+  .orch .desc{font-size:12.5px;color:#a5b4d6;flex:1;min-width:260px;line-height:1.5;}
+  .controls{display:flex;gap:8px;align-items:center;}
+  button{background:var(--card);border:1px solid var(--border);color:var(--text);font-size:12.5px;padding:7px 13px;border-radius:7px;cursor:pointer;font-weight:500;}
+  button:hover{background:#1c2740;border-color:#374766;}
+  button.primary{background:#4338ca;border-color:#4338ca;color:#fff;}
+  button.primary:hover{background:#4f46e5;}
+  button:disabled{opacity:.4;cursor:not-allowed;}
+  select{background:var(--card);border:1px solid var(--border);color:var(--text);font-size:12px;padding:6px 9px;border-radius:7px;}
+
+  .legend{display:flex;gap:14px;flex-wrap:wrap;margin:14px 0 20px;font-size:11.5px;color:var(--text-dim);}
+  .legend span{display:inline-flex;align-items:center;gap:6px;}
+  .dot{width:9px;height:9px;border-radius:50%;display:inline-block;}
+
+  .pipeline{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;position:relative;}
+  @media(max-width:820px){.pipeline{grid-template-columns:repeat(2,1fr);}}
+
+  .stage{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 13px;position:relative;cursor:pointer;transition:border-color .15s,transform .15s;}
+  .stage:hover{border-color:#374766;}
+  .stage .num{position:absolute;top:10px;right:12px;font-size:10.5px;color:var(--text-mute);font-family:var(--mono);}
+  .stage .icon{width:26px;height:26px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;margin-bottom:9px;}
+  .stage .name{font-size:12.5px;font-weight:600;margin-bottom:3px;line-height:1.3;}
+  .stage .role{font-size:10.5px;color:var(--text-mute);line-height:1.4;margin-bottom:7px;}
+  .stage .badges{display:flex;gap:5px;flex-wrap:wrap;}
+  .badge{font-size:9.5px;padding:2px 6px;border-radius:4px;font-weight:600;letter-spacing:.02em;}
+  .stage .detail{display:none;margin-top:9px;padding-top:9px;border-top:1px solid var(--border-soft);font-size:11px;color:var(--text-dim);line-height:1.55;}
+  .stage.open .detail{display:block;}
+  .stage.active{border-color:#6366f1;box-shadow:0 0 0 1px #6366f1,0 0 18px -4px #6366f1;}
+  .stage.done{border-color:#1c2637;}
+  .stage.done .icon{opacity:.55;}
+  .stage.done::after{content:'✓';position:absolute;top:9px;left:12px;font-size:10px;color:#34d399;font-weight:700;}
+
+  .progress{height:3px;background:var(--border-soft);border-radius:2px;margin:20px 0 4px;overflow:hidden;}
+  .progress-bar{height:100%;width:0%;background:linear-gradient(90deg,#6366f1,#818cf8);transition:width .3s ease;}
+  .progress-label{font-size:11px;color:var(--text-mute);margin-bottom:14px;text-align:right;}
+
+  .console{background:#080b12;border:1px solid var(--border-soft);border-radius:10px;margin-top:6px;overflow:hidden;}
+  .console-hd{background:#0d1420;padding:8px 14px;font-size:11px;color:var(--text-mute);border-bottom:1px solid var(--border-soft);display:flex;justify-content:space-between;}
+  .console-body{padding:12px 14px;height:220px;overflow-y:auto;font-family:var(--mono);font-size:12px;line-height:1.7;}
+  .console-body .line{white-space:pre-wrap;margin-bottom:2px;}
+  .console-body .ts{color:var(--text-mute);margin-right:8px;}
+  .console-body .tag{font-weight:700;margin-right:6px;}
+  .console-body .empty{color:var(--text-mute);}
+  .console-body::-webkit-scrollbar{width:8px;}
+  .console-body::-webkit-scrollbar-thumb{background:#243044;border-radius:4px;}
+
+  .footnote{font-size:11px;color:var(--text-mute);margin-top:14px;line-height:1.6;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="hd">
+    <div class="eyebrow">Phoenix.ai — demo</div>
+    <h1>How the agent pipeline reconstructs system knowledge</h1>
+    <p>A staged pipeline of specialized agents over one shared knowledge graph. Deterministic parsers extract exact facts first; AI agents interpret only structured facts, never raw source; every element carries provenance and confidence. Click a stage to inspect it, or run the demo against a sample legacy system.</p>
+  </div>
+
+  <div class="orch">
+    <span class="tag">ORCHESTRATOR</span>
+    <span class="desc">Sequences all 11 stages with explicit dependencies · routes bulk extraction to lower-tier models and hard synthesis to higher-tier models · isolates each tenant's data · guarantees identical inputs always yield an identical graph.</span>
+    <div class="controls">
+      <select id="speed">
+        <option value="1400">Slow</option>
+        <option value="800" selected>Normal</option>
+        <option value="350">Fast</option>
+      </select>
+      <button id="resetBtn">Reset</button>
+      <button id="runBtn" class="primary">Run demo ▸</button>
+    </div>
+  </div>
+
+  <div class="legend">
+    <span><span class="dot" style="background:#94a3b8"></span>Deterministic (parsing, no AI)</span>
+    <span><span class="dot" style="background:#8b5cf6"></span>AI agent — no tools / no write access</span>
+    <span><span class="dot" style="background:#22c55e"></span>Human-in-the-loop</span>
+    <span><span class="dot" style="background:#14b8a6"></span>Shared knowledge graph</span>
+    <span><span class="dot" style="background:#f97316"></span>Governance / quality</span>
+  </div>
+
+  <div class="pipeline" id="pipeline"></div>
+
+  <div class="progress"><div class="progress-bar" id="progressBar"></div></div>
+  <div class="progress-label" id="progressLabel">Ready — 0 / 11 stages</div>
+
+  <div class="console">
+    <div class="console-hd"><span>run log · sample system: Evernorth ClaimsCore (legacy claims processing platform)</span><span id="clock">idle</span></div>
+    <div class="console-body" id="consoleBody"><div class="line empty">— click "Run demo" to process a sample system through every agent stage —</div></div>
+  </div>
+
+  <div class="footnote">Demo uses illustrative sample output modeled on the FRD's functional requirements (FR-ING through FR-ORC). No real system is analyzed in this demo.</div>
+</div>
+
+<script>
+const stages = [
+  { icon:'IN', color:'#94a3b8', name:'Ingestion & connectors', role:'Deterministic · normalizes every source into a common representation', badges:[['no AI','#94a3b8']],
+    detail:'Connects to source code, docs, tickets, logs, gateways, data models, and recordings. Each artifact is stamped with source type, version/commit, and checksum. Supports incremental fetch on re-runs.',
+    log:['Connected 6 sources: Git (ClaimsCore, 340k LOC), Confluence (212 pages), Jira (1,847 tickets)','Splunk logs (30-day window), Oracle DB schema, Kong API gateway specs','Normalized to common intermediate representation — 1 source (SharePoint SOPs) access pending, recorded as gap'] },
+  { icon:'RD', color:'#d97706', name:'Redaction & injection hardening', role:'Deterministic · security gate — runs before any model sees content', badges:[['gate','#d97706']],
+    detail:'Scans all ingested content for secrets/PII before storage or model access. Detected values are replaced with stable reference tokens. Content is later presented to models only as delimited data, never as instructions.',
+    log:['Scanned 340k LOC + 212 docs for secrets and PII','Redacted 14 API keys, 3 DB connection strings, 212 member-ID/SSN patterns','1 suspicious instruction found in a ticket comment — neutralized, treated as data only'] },
+  { icon:'DE', color:'#94a3b8', name:'Deterministic extraction', role:'Parsing (AST/LSP) — exact facts, not model inference', badges:[['no AI','#94a3b8']],
+    detail:'Builds the module, dependency and call graph; extracts data models, API contracts, and deployment topology from source. Computes co-change coupling and single-owner risk. Every fact stored with file-and-line evidence.',
+    log:['AST/LSP parse complete: 1,204 classes, 89 REST endpoints, 340 tables from ORM','Co-change coupling computed across 4 years of commit history','Flagged ClaimsAdjudicationEngine.java as single-owner — high knowledge-risk'] },
+  { icon:'SI', color:'#8b5cf6', name:'Semantic inference', role:'AI agent · reads structured facts only — no tools, no raw source', badges:[['AI agent','#8b5cf6'],['no tools','#8b5cf6']],
+    detail:'Infers bounded contexts by combining dependency clustering, shared vocabulary, and data ownership. Retrieves rationale from commits, PRs, tickets and docs — never fabricates it. Inferred elements are flagged distinct from extracted facts.',
+    log:['Clustered 1,204 classes into 7 bounded contexts via community detection','Named: Claims Intake, Adjudication, Eligibility, Provider Network, Payments, Appeals, Reporting','Rationale for "Adjudication" retrieved from 6 PR discussions + 2 Confluence pages'] },
+  { icon:'KG', color:'#14b8a6', name:'Knowledge graph & provenance', role:'Single source of truth — every output is a projection of this graph', badges:[['store','#14b8a6']],
+    detail:'Stores all elements as typed nodes and edges. Every node/edge carries provenance (source, deriving agent, evidence, timestamp) and a confidence value. Versioned — each run produces an immutable graph version.',
+    log:['18,940 nodes / 41,200 edges committed to graph v14','Every node stamped with provenance + confidence','Stable, content-derived IDs assigned so elements persist across future runs'] },
+  { icon:'RC', color:'#f43f5e', name:'Reconciliation & confidence', role:'Merges signals across sources, surfaces disagreement', badges:[['conflicts','#f43f5e']],
+    detail:'Weights sources by type — code for structure, logs for behaviour, docs for intent. Confidence is derived structurally, never from model self-report. Conflicting sources are recorded, not silently resolved.',
+    log:['312 elements reconciled across 2+ independent sources','9 conflicts detected — e.g. code shows sync adjudication call, 2019 diagram shows async queue','Both positions retained and flagged for review'] },
+  { icon:'OK', color:'#3b82f6', name:'OKF renderers', role:'Projects the graph into 11 output artifact types', badges:[['x11 outputs','#3b82f6']],
+    detail:'Renders logical data models, domains, personas/journeys, screens, execution flows, C4 architecture, deployment diagrams, NFRs, epics/features/stories, integrations & data flows, and flow-to-journey relationships. Renderers read the graph — they do not analyze independently.',
+    log:['Rendered: data model, 7 domain maps, C4 (context/container/component), deployment diagram','42 execution flows, 118 epics/features/stories, integration map (23 integrations)','Persona/journey output partial — limited by available source coverage'] },
+  { icon:'GA', color:'#f97316', name:'Gap analysis planner', role:'Names the specific input that would resolve each coverage gap', badges:[['governance','#f97316']],
+    detail:'After reconciliation, coverage is assessed per output artifact. Gaps are phrased as collaborative requests, consistent with a trust-over-surveillance approach — never as an audit finding.',
+    log:['3 gaps identified after coverage assessment','No source for Appeals persona/journey — request UX research or interviews','SharePoint SOPs unavailable — request access to resolve'] },
+  { icon:'DR', color:'#06b6d4', name:'Drift detection', role:'Diffs the deterministic graph across runs, not generated prose', badges:[['differential','#06b6d4']],
+    detail:'On re-run, only artifacts changed since the prior version are reprocessed. The new graph is diffed against the prior to produce an architectural changelog, immune to model non-determinism.',
+    log:['Re-run vs. graph v13: +1 integration (new Provider Portal API)','1 removed table (legacy_claims_archive dropped), 4 modified flows','Architectural changelog generated for review'] },
+  { icon:'HR', color:'#22c55e', name:'Human review & correction', role:'Human-in-the-loop · reviewers confirm, edit or reject any element', badges:[['human','#22c55e']],
+    detail:'Presents a review queue ordered by element leverage (centrality) and inverse confidence. Confirmed corrections are persisted and treated as authoritative on every subsequent run.',
+    log:['Review queue ranked by centrality × inverse confidence','Top item: Adjudication sync/async conflict (confidence 0.54)','Reviewer confirmed async queue is current; correction persisted as authoritative'] },
+  { icon:'EV', color:'#10b981', name:'Evaluation harness', role:'Scores each run against a golden bundle, gates regressions', badges:[['CI gate','#10b981']],
+    detail:'Scores precision/recall for nodes and edges against a hand-authored golden bundle. Runs automatic round-trip checks — e.g. claimed APIs verified against live gateway logs. Gates changes that regress accuracy.',
+    log:['Scored vs. golden bundle: node precision 0.93 / recall 0.89, edge F1 0.87','Round-trip check: 87 / 89 claimed APIs found live in gateway logs — 2 flagged as contradictions','Run gate: PASS'] },
+];
+
+const pipeline = document.getElementById('pipeline');
+stages.forEach((s,i)=>{
+  const el = document.createElement('div');
+  el.className = 'stage';
+  el.id = 'stage-'+i;
+  el.innerHTML = `
+    <div class="num">${String(i+1).padStart(2,'0')}</div>
+    <div class="icon" style="background:${s.color}22;color:${s.color}">${s.icon}</div>
+    <div class="name">${s.name}</div>
+    <div class="role">${s.role}</div>
+    <div class="badges">${s.badges.map(b=>`<span class="badge" style="background:${b[1]}22;color:${b[1]}">${b[0]}</span>`).join('')}</div>
+    <div class="detail">${s.detail}</div>
+  `;
+  el.addEventListener('click', ()=> el.classList.toggle('open'));
+  pipeline.appendChild(el);
+});
+
+const consoleBody = document.getElementById('consoleBody');
+const progressBar = document.getElementById('progressBar');
+const progressLabel = document.getElementById('progressLabel');
+const runBtn = document.getElementById('runBtn');
+const resetBtn = document.getElementById('resetBtn');
+const clock = document.getElementById('clock');
+const speedSel = document.getElementById('speed');
+
+let running = false;
+let t0 = 0;
+
+function logLine(text, color){
+  const secs = ((performance.now()-t0)/1000).toFixed(1);
+  const div = document.createElement('div');
+  div.className = 'line';
+  div.innerHTML = `<span class="ts">[${secs}s]</span><span class="tag" style="color:${color}">●</span>${text}`;
+  consoleBody.appendChild(div);
+  consoleBody.scrollTop = consoleBody.scrollHeight;
+}
+
+function reset(){
+  running = false;
+  runBtn.disabled = false;
+  runBtn.textContent = 'Run demo ▸';
+  document.querySelectorAll('.stage').forEach(el=>{ el.classList.remove('active','done','open'); });
+  progressBar.style.width = '0%';
+  progressLabel.textContent = 'Ready — 0 / 11 stages';
+  clock.textContent = 'idle';
+  consoleBody.innerHTML = '<div class="line empty">— click "Run demo" to process a sample system through every agent stage —</div>';
+}
+
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+async function run(){
+  if(running) return;
+  running = true;
+  runBtn.disabled = true;
+  consoleBody.innerHTML = '';
+  t0 = performance.now();
+  clock.textContent = 'running…';
+  const delay = parseInt(speedSel.value,10);
+
+  for(let i=0;i<stages.length;i++){
+    document.querySelectorAll('.stage').forEach(el=>el.classList.remove('active'));
+    const el = document.getElementById('stage-'+i);
+    el.classList.add('active');
+    el.scrollIntoView({behavior:'smooth', block:'nearest'});
+    logLine(`<strong style="color:${stages[i].color}">${stages[i].name}</strong> — starting`, stages[i].color);
+    for(const line of stages[i].log){
+      await sleep(delay);
+      logLine(line, stages[i].color);
+    }
+    await sleep(delay*0.6);
+    el.classList.remove('active');
+    el.classList.add('done');
+    progressBar.style.width = `${Math.round(((i+1)/stages.length)*100)}%`;
+    progressLabel.textContent = `${i+1} / ${stages.length} stages complete`;
+  }
+  logLine('<strong style="color:#818cf8">Orchestrator</strong> — run complete, graph v14 published, reproducible for identical inputs', '#818cf8');
+  clock.textContent = 'complete';
+  runBtn.disabled = false;
+  running = false;
+}
+
+runBtn.addEventListener('click', run);
+resetBtn.addEventListener('click', reset);
+</script>
+</body>
+</html>

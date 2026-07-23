@@ -1,0 +1,23 @@
+{
+  "name": "@phoenix-ai/okf-renderers",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Project the knowledge graph into the eleven OKF output artifact types. Renderers read the graph; they do not perform independent analysis.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b",
+    "dev": "tsc -b --watch",
+    "lint": "eslint src",
+    "typecheck": "tsc -b --noEmit",
+    "test": "vitest run",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@phoenix-ai/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.4"
+  }
+}

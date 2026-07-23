@@ -1,0 +1,23 @@
+{
+  "name": "@phoenix-ai/redaction-hardening",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Runs in the connector layer before any content is stored or sent to a model; removes secrets/PII and neutralises prompt injection.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b",
+    "dev": "tsc -b --watch",
+    "lint": "eslint src",
+    "typecheck": "tsc -b --noEmit",
+    "test": "vitest run",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@phoenix-ai/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.4"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "@phoenix-ai/shared",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Common types, logging, config, and utilities shared across all pipeline modules.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b",
+    "dev": "tsc -b --watch",
+    "lint": "eslint src",
+    "typecheck": "tsc -b --noEmit",
+    "test": "vitest run",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "vitest": "^2.1.4"
+  }
+}

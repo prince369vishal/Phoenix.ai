@@ -1,0 +1,23 @@
+{
+  "name": "@phoenix-ai/ingestion-connectors",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Connects to artifact sources (repos, wikis, ticketing, log stores, gateways) and normalises them into a common intermediate representation (CIR).",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b",
+    "dev": "tsc -b --watch",
+    "lint": "eslint src",
+    "typecheck": "tsc -b --noEmit",
+    "test": "vitest run",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@phoenix-ai/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.4"
+  }
+}
