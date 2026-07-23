@@ -39,3 +39,4 @@ Thumbs.db
 data/
 artifacts/
 *.graphdb
+!apps/web/src/data/
