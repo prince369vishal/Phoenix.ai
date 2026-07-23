@@ -11,7 +11,7 @@ import { conf, meta, prov } from './helpers.js';
 
 export const systemSummary: SystemSummary = {
   id: 'aurora-commerce',
-  name: 'Aurora Commerce',
+  name: 'Aurora Commerce (Dummy company used for reverse engineering)',
   description:
     'A mid-size e-commerce platform handling storefront browsing, checkout, payments, fraud screening, and fulfillment across web and mobile, integrated with a legacy ERP for finance and inventory reconciliation.',
   tags: ['e-commerce', 'payments', 'fulfillment'],
