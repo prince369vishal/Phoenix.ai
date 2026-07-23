@@ -36,7 +36,7 @@ export const driftHistory: DriftRun[] = [
     changes: [
       {
         id: 'drift-hist-3',
-        elementName: 'Aurora Commerce',
+        elementName: 'Aurora Commerce (Dummy Company used for reverse engineering)',
         changeType: 'added',
         description: 'Baseline established: 142 elements extracted across 6 domains, 11 containers, and 2 execution flows.',
         detectedAt: '2026-06-22T09:00:00.000Z',
