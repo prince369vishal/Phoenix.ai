@@ -27,6 +27,10 @@ import {
   Play,
   RotateCcw,
   Check,
+  Clock,
+  Undo2,
+  XCircle,
+  Info,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { PageHeader } from '../components/page-header.js';
@@ -38,7 +42,7 @@ import { cn } from '../lib/utils.js';
 import { pairwise } from '../lib/pairwise.js';
 
 type StageColor = 'slate' | 'violet' | 'amber' | 'teal' | 'rose' | 'blue' | 'orange' | 'cyan' | 'emerald';
-type StageStatus = 'pending' | 'active' | 'done';
+type StageStatus = 'pending' | 'active' | 'awaiting_review' | 'done';
 
 interface Stage {
   code: string;
@@ -276,6 +280,11 @@ const STAGES: Stage[] = [
   },
 ];
 
+// Stages where a judgment call is actually being made (AI inference, conflict
+// resolution, governance framing, drift interpretation) — candidates for a
+// review gate when not gating every stage. Indices into STAGES.
+const JUDGMENT_STAGE_INDICES = [3, 5, 7, 8];
+
 const LEGEND: Array<{ color: StageColor; label: string }> = [
   { color: 'slate', label: 'Deterministic (parsing, no AI)' },
   { color: 'violet', label: 'AI agent — no tools / no write access' },
@@ -285,6 +294,30 @@ const LEGEND: Array<{ color: StageColor; label: string }> = [
 ];
 
 const SPEED_MS: Record<'slow' | 'normal' | 'fast', number> = { slow: 1300, normal: 750, fast: 320 };
+
+const MAX_ATTEMPTS = 3;
+
+type ReviewAction = 'approve' | 'request_changes' | 'reject_rollback' | 'abort';
+
+interface ReviewDecisionInput {
+  action: ReviewAction;
+  comment?: string | undefined;
+  rollbackTo?: number | undefined;
+}
+
+interface Decision {
+  stageIndex: number;
+  attempt: number;
+  action: ReviewAction;
+  comment?: string | undefined;
+  rollbackTo?: number | undefined;
+  timestamp: string;
+}
+
+interface ReviewGateState {
+  index: number;
+  attempt: number;
+}
 
 interface LogEntry {
   stageIndex: number;
@@ -317,8 +350,9 @@ function AgentNode({ data }: NodeProps<AgentNodeData>): JSX.Element {
       className={cn(
         'flex h-[76px] w-[184px] flex-col justify-between rounded-lg border bg-card px-3 py-2.5 shadow-sm transition-all',
         status === 'active' && 'border-primary ring-2 ring-primary',
-        status !== 'active' && isSelected && 'border-violet-400 ring-2 ring-violet-300',
-        status !== 'active' && !isSelected && 'border-border',
+        status === 'awaiting_review' && 'border-emerald-400 ring-2 ring-emerald-300 animate-pulse',
+        status !== 'active' && status !== 'awaiting_review' && isSelected && 'border-violet-400 ring-2 ring-violet-300',
+        status !== 'active' && status !== 'awaiting_review' && !isSelected && 'border-border',
         status === 'done' && 'opacity-60',
       )}
     >
@@ -335,6 +369,10 @@ function AgentNode({ data }: NodeProps<AgentNodeData>): JSX.Element {
         {status === 'done' ? (
           <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white">
             <Check className="h-2.5 w-2.5" />
+          </span>
+        ) : status === 'awaiting_review' ? (
+          <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white">
+            <Clock className="h-2.5 w-2.5" />
           </span>
         ) : (
           <span className="font-mono text-[9px] text-muted-foreground">{stage.code}</span>
@@ -362,12 +400,14 @@ const GAP_Y = 56;
 function PipelineDiagram({
   activeIndex,
   completed,
+  reviewGateIndex,
   selectedIndex,
   onSelect,
   isFullscreen,
 }: {
   activeIndex: number;
   completed: Set<number>;
+  reviewGateIndex: number | null;
   selectedIndex: number;
   onSelect: (i: number) => void;
   isFullscreen: boolean;
@@ -377,6 +417,13 @@ function PipelineDiagram({
       const col = i % GRID_COLS;
       const row = Math.floor(i / GRID_COLS);
       const hasNext = i + 1 < STAGES.length;
+      const status: StageStatus = completed.has(i)
+        ? 'done'
+        : reviewGateIndex === i
+          ? 'awaiting_review'
+          : activeIndex === i
+            ? 'active'
+            : 'pending';
       return {
         id: stage.code,
         type: 'agent',
@@ -384,7 +431,7 @@ function PipelineDiagram({
         draggable: false,
         data: {
           stage,
-          status: completed.has(i) ? 'done' : activeIndex === i ? 'active' : 'pending',
+          status,
           isSelected: selectedIndex === i,
           needsTargetTop: col === 0 && i > 0,
           needsTargetLeft: col === 1,
@@ -397,7 +444,7 @@ function PipelineDiagram({
     const indexed = STAGES.map((stage, i) => ({ stage, i }));
     const edges: Edge[] = pairwise(indexed).map(([prev, curr]) => {
       const sourceDone = completed.has(prev.i);
-      const targetActive = activeIndex === curr.i;
+      const targetActive = activeIndex === curr.i || reviewGateIndex === curr.i;
       const targetDone = completed.has(curr.i);
       const flowing = sourceDone && targetActive;
       const settled = sourceDone && targetDone;
@@ -417,7 +464,7 @@ function PipelineDiagram({
     });
 
     return { nodes, edges };
-  }, [activeIndex, completed, selectedIndex]);
+  }, [activeIndex, completed, reviewGateIndex, selectedIndex]);
 
   return (
     <div className="h-full w-full rounded-lg border border-border bg-muted/10">
@@ -444,6 +491,224 @@ function PipelineDiagram({
   );
 }
 
+const ACTION_LABEL: Record<ReviewAction, string> = {
+  approve: 'Approved',
+  request_changes: 'Requested changes',
+  reject_rollback: 'Rejected — rolled back',
+  abort: 'Rejected — run aborted',
+};
+
+function DecisionBadge({ action }: { action: ReviewAction }): JSX.Element {
+  if (action === 'approve') {
+    return (
+      <Badge variant="success" className="gap-1">
+        <Check className="h-3 w-3" /> {ACTION_LABEL[action]}
+      </Badge>
+    );
+  }
+  if (action === 'request_changes') {
+    return (
+      <Badge variant="warning" className="gap-1">
+        <RotateCcw className="h-3 w-3" /> {ACTION_LABEL[action]}
+      </Badge>
+    );
+  }
+  return (
+    <Badge variant="danger" className="gap-1">
+      {action === 'reject_rollback' ? <Undo2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
+      {ACTION_LABEL[action]}
+    </Badge>
+  );
+}
+
+function ReviewGatePanel({
+  gate,
+  onDecision,
+}: {
+  gate: ReviewGateState;
+  onDecision: (input: ReviewDecisionInput) => void;
+}): JSX.Element {
+  const stage = STAGES[gate.index];
+  const [comment, setComment] = useState('');
+  const [rollbackTo, setRollbackTo] = useState<number>(Math.max(0, gate.index - 1));
+
+  useEffect(() => {
+    setComment('');
+    setRollbackTo(Math.max(0, gate.index - 1));
+  }, [gate.index, gate.attempt]);
+
+  if (!stage) return <></>;
+
+  const retriesExhausted = gate.attempt >= MAX_ATTEMPTS;
+  const needsComment = comment.trim().length === 0;
+
+  return (
+    <Card className="mb-4 border-emerald-300 bg-emerald-50/70 shadow-sm dark:border-emerald-900/50 dark:bg-emerald-950/25">
+      <CardHeader>
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <Badge className="mb-1.5 gap-1 border-transparent bg-emerald-600 text-white">
+              <ClipboardCheck className="h-3 w-3" /> Awaiting human review
+            </Badge>
+            <CardTitle>
+              {stage.code} · {stage.name}
+            </CardTitle>
+            <CardDescription>
+              Attempt {gate.attempt} of {MAX_ATTEMPTS}
+              {retriesExhausted ? ' — retry limit reached, approve, edit manually, or reject' : ''}
+            </CardDescription>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div>
+          <div className="mb-1 text-xs font-semibold uppercase text-muted-foreground">Stage output to review</div>
+          <ul className="grid grid-cols-1 gap-1.5 sm:grid-cols-3">
+            {stage.log.map((line) => (
+              <li key={line} className="rounded bg-background/70 px-2 py-1 font-mono text-[11px] leading-snug text-muted-foreground">
+                {line}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <textarea
+          className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-sm"
+          placeholder="Note for approve (optional) · reason required for request changes / reject"
+          rows={2}
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
+        />
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" onClick={() => onDecision({ action: 'approve', comment: comment.trim() || undefined })}>
+            <Check className="h-3.5 w-3.5" /> Approve & continue
+          </Button>
+
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={retriesExhausted || needsComment}
+            title={retriesExhausted ? 'Retry limit reached for this stage' : undefined}
+            onClick={() => onDecision({ action: 'request_changes', comment: comment.trim() })}
+          >
+            <RotateCcw className="h-3.5 w-3.5" /> Request changes
+          </Button>
+
+          {gate.index > 0 ? (
+            <div className="flex items-center gap-1.5">
+              <select
+                className="rounded-md border border-border bg-background px-2 py-1.5 text-xs"
+                value={rollbackTo}
+                onChange={(e) => setRollbackTo(Number(e.target.value))}
+              >
+                {STAGES.slice(0, gate.index).map((s, idx) => (
+                  <option key={s.code} value={idx}>
+                    Roll back to {s.code} · {s.name}
+                  </option>
+                ))}
+              </select>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-rose-300 text-rose-700 hover:bg-rose-50 dark:border-rose-900 dark:text-rose-400"
+                disabled={needsComment}
+                onClick={() => onDecision({ action: 'reject_rollback', comment: comment.trim(), rollbackTo })}
+              >
+                <Undo2 className="h-3.5 w-3.5" /> Reject & roll back
+              </Button>
+            </div>
+          ) : null}
+
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-rose-700 hover:bg-rose-50 dark:text-rose-400"
+            disabled={needsComment}
+            onClick={() => onDecision({ action: 'abort', comment: comment.trim() })}
+          >
+            <XCircle className="h-3.5 w-3.5" /> Reject & abort run
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function DecisionHistory({ decisions }: { decisions: Decision[] }): JSX.Element | null {
+  if (decisions.length === 0) return null;
+  const reversed = [...decisions].reverse();
+
+  return (
+    <Card className="mb-4">
+      <CardHeader>
+        <CardTitle className="text-sm">Review decisions</CardTitle>
+        <CardDescription>Audit trail for this run — every gate, decision, and reason.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {reversed.map((d, idx) => {
+          const stage = STAGES[d.stageIndex];
+          return (
+            <div
+              key={`${d.stageIndex}-${d.attempt}-${idx}`}
+              className="flex flex-wrap items-start justify-between gap-2 rounded-md border border-border px-3 py-2 text-sm"
+            >
+              <div className="flex flex-1 flex-col gap-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-mono text-[11px] text-muted-foreground">{stage?.code}</span>
+                  <span className="font-medium">{stage?.name}</span>
+                  <span className="text-[11px] text-muted-foreground">attempt {d.attempt}</span>
+                  <DecisionBadge action={d.action} />
+                </div>
+                {d.comment ? <p className="text-xs text-muted-foreground">&ldquo;{d.comment}&rdquo;</p> : null}
+                {d.action === 'reject_rollback' && d.rollbackTo !== undefined ? (
+                  <p className="text-xs text-muted-foreground">
+                    rolled back to {STAGES[d.rollbackTo]?.code} · {STAGES[d.rollbackTo]?.name}
+                  </p>
+                ) : null}
+              </div>
+              <span className="shrink-0 text-[11px] text-muted-foreground">{d.timestamp}</span>
+            </div>
+          );
+        })}
+      </CardContent>
+    </Card>
+  );
+}
+
+function SegmentedControl<T extends string>({
+  value,
+  onChange,
+  options,
+  disabled,
+}: {
+  value: T;
+  onChange: (v: T) => void;
+  options: Array<{ value: T; label: string }>;
+  disabled?: boolean;
+}): JSX.Element {
+  return (
+    <div className="inline-flex items-center gap-0.5 rounded-lg bg-muted/70 p-0.5">
+      {options.map((opt) => (
+        <button
+          key={opt.value}
+          type="button"
+          disabled={disabled}
+          onClick={() => onChange(opt.value)}
+          className={cn(
+            'rounded-md px-2.5 py-1 text-xs font-medium transition-all disabled:cursor-not-allowed disabled:opacity-50',
+            value === opt.value
+              ? 'bg-background text-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground',
+          )}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function AgentPipelinePage(): JSX.Element {
   const [running, setRunning] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -451,7 +716,12 @@ export function AgentPipelinePage(): JSX.Element {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [speed, setSpeed] = useState<'slow' | 'normal' | 'fast'>('normal');
+  const [gateMode, setGateMode] = useState<'all' | 'judgment'>('all');
+  const [reviewGate, setReviewGate] = useState<ReviewGateState | null>(null);
+  const [decisions, setDecisions] = useState<Decision[]>([]);
   const cancelledRef = useRef(false);
+  const attemptsRef = useRef<Record<number, number>>({});
+  const decisionResolverRef = useRef<((input: ReviewDecisionInput) => void) | null>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -464,39 +734,151 @@ export function AgentPipelinePage(): JSX.Element {
     };
   }, []);
 
+  function isGated(i: number): boolean {
+    return gateMode === 'all' || JUDGMENT_STAGE_INDICES.includes(i);
+  }
+
+  function waitForReview(index: number, attempt: number): Promise<ReviewDecisionInput> {
+    setReviewGate({ index, attempt });
+    setSelectedIndex(index);
+    return new Promise((resolve) => {
+      decisionResolverRef.current = resolve;
+    });
+  }
+
+  function submitReviewDecision(input: ReviewDecisionInput): void {
+    decisionResolverRef.current?.(input);
+    decisionResolverRef.current = null;
+  }
+
   function reset(): void {
     cancelledRef.current = true;
+    decisionResolverRef.current?.({ action: 'abort' });
+    decisionResolverRef.current = null;
+    attemptsRef.current = {};
     setRunning(false);
     setActiveIndex(-1);
     setCompleted(new Set());
     setLogs([]);
+    setReviewGate(null);
+    setDecisions([]);
+  }
+
+  async function runStageLog(i: number, attempt: number, delay: number): Promise<boolean> {
+    const stage = STAGES[i];
+    if (!stage) return false;
+    setActiveIndex(i);
+    setSelectedIndex(i);
+    setLogs((prev) => [
+      ...prev,
+      { stageIndex: i, text: `${stage.name} — starting${attempt > 1 ? ` (attempt ${attempt}, revising per feedback)` : ''}` },
+    ]);
+    for (const line of stage.log) {
+      await sleep(delay);
+      if (cancelledRef.current) return false;
+      setLogs((prev) => [...prev, { stageIndex: i, text: line }]);
+    }
+    await sleep(delay * 0.5);
+    return !cancelledRef.current;
   }
 
   async function runDemo(): Promise<void> {
     if (running) return;
     cancelledRef.current = false;
+    attemptsRef.current = {};
     setRunning(true);
     setCompleted(new Set());
     setLogs([]);
+    setDecisions([]);
+    setReviewGate(null);
     setActiveIndex(-1);
     const delay = SPEED_MS[speed];
 
-    for (let i = 0; i < STAGES.length; i++) {
+    let i = 0;
+    while (i < STAGES.length) {
       if (cancelledRef.current) return;
       const stage = STAGES[i];
-      if (!stage) continue;
-      setActiveIndex(i);
-      setSelectedIndex(i);
-      setLogs((prev) => [...prev, { stageIndex: i, text: `${stage.name} — starting` }]);
-      for (const line of stage.log) {
-        await sleep(delay);
-        if (cancelledRef.current) return;
-        setLogs((prev) => [...prev, { stageIndex: i, text: line }]);
+      if (!stage) {
+        i++;
+        continue;
       }
-      await sleep(delay * 0.5);
+
+      const attempt = (attemptsRef.current[i] ?? 0) + 1;
+      attemptsRef.current[i] = attempt;
+
+      const ok = await runStageLog(i, attempt, delay);
+      if (!ok) return;
+
+      if (!isGated(i)) {
+        setCompleted((prev) => new Set(prev).add(i));
+        i++;
+        continue;
+      }
+
+      setLogs((prev) => [...prev, { stageIndex: i, text: '⏸ holding for human review' }]);
+      const decision = await waitForReview(i, attempt);
       if (cancelledRef.current) return;
-      setCompleted((prev) => new Set(prev).add(i));
+      setReviewGate(null);
+      setDecisions((prev) => [
+        ...prev,
+        {
+          stageIndex: i,
+          attempt,
+          action: decision.action,
+          comment: decision.comment,
+          rollbackTo: decision.rollbackTo,
+          timestamp: new Date().toLocaleTimeString(),
+        },
+      ]);
+
+      if (decision.action === 'approve') {
+        setLogs((prev) => [
+          ...prev,
+          { stageIndex: i, text: `✅ reviewer approved${decision.comment ? ` — "${decision.comment}"` : ''}` },
+        ]);
+        setCompleted((prev) => new Set(prev).add(i));
+        i++;
+        continue;
+      }
+
+      if (decision.action === 'request_changes') {
+        setLogs((prev) => [
+          ...prev,
+          { stageIndex: i, text: `✏️ reviewer requested changes — "${decision.comment}"` },
+        ]);
+        continue; // re-run the same stage
+      }
+
+      if (decision.action === 'reject_rollback') {
+        const target = decision.rollbackTo ?? Math.max(0, i - 1);
+        const targetStage = STAGES[target];
+        setLogs((prev) => [
+          ...prev,
+          {
+            stageIndex: i,
+            text: `↩️ reviewer rejected — "${decision.comment}" — rolling back to ${targetStage?.code} · ${targetStage?.name}`,
+          },
+        ]);
+        setCompleted((prev) => {
+          const next = new Set(prev);
+          for (let k = target; k <= i; k++) next.delete(k);
+          return next;
+        });
+        for (let k = target; k <= i; k++) delete attemptsRef.current[k];
+        i = target;
+        continue;
+      }
+
+      // abort
+      setLogs((prev) => [
+        ...prev,
+        { stageIndex: i, text: `⛔ reviewer rejected — run aborted — "${decision.comment}"` },
+      ]);
+      setActiveIndex(-1);
+      setRunning(false);
+      return;
     }
+
     setActiveIndex(-1);
     setLogs((prev) => [
       ...prev,
@@ -512,46 +894,84 @@ export function AgentPipelinePage(): JSX.Element {
     <div>
       <PageHeader
         title="Agent Pipeline"
-        description="A staged pipeline of specialized agents over one shared knowledge graph. Deterministic parsers extract exact facts first; AI agents interpret only structured facts, never raw source; every element carries provenance and confidence. Click a node to inspect it, or run the demo against a sample legacy system."
+        description="A staged pipeline of specialized agents over one shared knowledge graph. Deterministic parsers extract exact facts first; AI agents interpret only structured facts, never raw source; every element carries provenance and confidence. Each gated stage pauses for human approval before the next stage runs — click a node to inspect it, or run the demo against a sample legacy system."
       />
 
-      <Card className="mb-6 border-violet-200 bg-violet-50/60 dark:border-violet-900/50 dark:bg-violet-950/20">
-        <CardContent className="flex flex-wrap items-center gap-4 p-4">
-          <div className="flex items-center gap-2 rounded-full bg-violet-600 px-3 py-1 text-xs font-semibold text-white">
-            <Workflow className="h-3.5 w-3.5" />
-            Orchestrator
+      <Card className="mb-6 overflow-hidden">
+        <CardContent className="flex items-center gap-3 p-4">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-600 text-white">
+            <Workflow className="h-4 w-4" />
           </div>
-          <p className="min-w-[260px] flex-1 text-sm text-muted-foreground">
-            Sequences all 11 stages with explicit dependencies · routes bulk extraction to lower-tier
-            models and hard synthesis to higher-tier models · isolates each tenant&apos;s data · guarantees
-            identical inputs always yield an identical graph.
-          </p>
-          <div className="flex items-center gap-2">
-            <div className="flex overflow-hidden rounded-md border border-border text-xs">
-              {(['slow', 'normal', 'fast'] as const).map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => setSpeed(s)}
-                  disabled={running}
-                  className={cn(
-                    'px-2.5 py-1.5 capitalize transition-colors disabled:cursor-not-allowed disabled:opacity-50',
-                    speed === s
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-background text-muted-foreground hover:bg-accent',
-                  )}
-                >
-                  {s}
-                </button>
-              ))}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm font-semibold">Orchestrator</span>
+              <span
+                className="text-muted-foreground/70"
+                title="Sequences all 11 stages with explicit dependencies · routes bulk extraction to lower-tier models and hard synthesis to higher-tier models · isolates each tenant's data · guarantees identical inputs always yield an identical graph."
+              >
+                <Info className="h-3.5 w-3.5" />
+              </span>
             </div>
-            <Button size="sm" variant="outline" onClick={reset} disabled={running && logs.length === 0}>
+            <p className="truncate text-xs text-muted-foreground">
+              11 staged agents · deterministic-first · reproducible runs
+            </p>
+          </div>
+        </CardContent>
+
+        <CardContent className="flex flex-wrap items-center justify-between gap-4 border-t border-border/70 bg-muted/20 p-4">
+          <div className="flex flex-wrap items-center gap-5">
+            <div className="flex flex-col gap-1.5">
+              <span
+                className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+                title={
+                  gateMode === 'all'
+                    ? 'Every stage pauses for approval before the next one starts.'
+                    : 'Only judgment-call stages pause for approval — semantic inference, reconciliation, gap analysis, drift detection. Deterministic and rendering stages proceed automatically.'
+                }
+              >
+                Review gate
+              </span>
+              <SegmentedControl
+                value={gateMode}
+                onChange={setGateMode}
+                disabled={running}
+                options={[
+                  { value: 'all', label: 'Every stage' },
+                  { value: 'judgment', label: 'Judgment only' },
+                ]}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Speed
+              </span>
+              <SegmentedControl
+                value={speed}
+                onChange={setSpeed}
+                disabled={running}
+                options={[
+                  { value: 'slow', label: 'Slow' },
+                  { value: 'normal', label: 'Normal' },
+                  { value: 'fast', label: 'Fast' },
+                ]}
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8"
+              onClick={reset}
+              disabled={running && logs.length === 0}
+              title="Reset run"
+            >
               <RotateCcw className="h-3.5 w-3.5" />
-              Reset
             </Button>
-            <Button size="sm" onClick={runDemo} disabled={running}>
+            <Button size="sm" className="gap-1.5" onClick={runDemo} disabled={running}>
               <Play className="h-3.5 w-3.5" />
-              {running ? 'Running…' : 'Run demo'}
+              {running ? (reviewGate ? 'Awaiting review…' : 'Running…') : 'Run demo'}
             </Button>
           </div>
         </CardContent>
@@ -578,6 +998,8 @@ export function AgentPipelinePage(): JSX.Element {
         </div>
       </div>
 
+      {reviewGate ? <ReviewGatePanel gate={reviewGate} onDecision={submitReviewDecision} /> : null}
+
       <FullscreenDiagram className="mb-4">
         {(isFullscreen) => (
           <div
@@ -593,6 +1015,7 @@ export function AgentPipelinePage(): JSX.Element {
                 <PipelineDiagram
                   activeIndex={activeIndex}
                   completed={completed}
+                  reviewGateIndex={reviewGate?.index ?? null}
                   selectedIndex={selectedIndex}
                   onSelect={setSelectedIndex}
                   isFullscreen={isFullscreen}
@@ -608,7 +1031,7 @@ export function AgentPipelinePage(): JSX.Element {
             >
               <div className="flex shrink-0 items-center justify-between border-b border-slate-800 px-4 py-2 text-xs text-slate-400">
                 <span>run log · sample system: Evernorth ClaimsCore (legacy claims processing platform)</span>
-                <span>{running ? 'running…' : logs.length > 0 ? 'complete' : 'idle'}</span>
+                <span>{running ? (reviewGate ? 'awaiting review…' : 'running…') : logs.length > 0 ? 'complete' : 'idle'}</span>
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 font-mono text-[12px] leading-7 text-slate-300">
                 {logs.length === 0 ? (
@@ -634,6 +1057,8 @@ export function AgentPipelinePage(): JSX.Element {
         )}
       </FullscreenDiagram>
 
+      <DecisionHistory decisions={decisions} />
+
       <Card className="mb-4">
         <CardHeader>
           <CardTitle>{selectedStage?.name ?? 'Select a stage'}</CardTitle>
@@ -653,6 +1078,11 @@ export function AgentPipelinePage(): JSX.Element {
                     {b}
                   </Badge>
                 ))}
+                {isGated(selectedIndex) ? (
+                  <Badge variant="outline" className="gap-1 text-[10px] text-emerald-700 dark:text-emerald-400">
+                    <ClipboardCheck className="h-2.5 w-2.5" /> review gate
+                  </Badge>
+                ) : null}
               </div>
               <p className="text-sm text-muted-foreground">{selectedStage.detail}</p>
               <div>
