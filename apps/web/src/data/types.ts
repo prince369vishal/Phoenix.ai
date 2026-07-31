@@ -231,11 +231,67 @@ export interface DriftRun {
 // Full knowledge graph (for the graph explorer view)
 // ---------------------------------------------------------------------------
 
+/** A single key/value fact about a node (e.g. "Technology: Node.js"). */
+export interface GraphNodeAttribute {
+  label: string;
+  value: string;
+}
+
+/** A named list of child facts (e.g. "Goals", "Acceptance criteria", "Steps"). */
+export interface GraphNodeSection {
+  label: string;
+  items: string[];
+}
+
+export type GraphCrossRefKind =
+  | 'review'
+  | 'gap'
+  | 'drift'
+  | 'nfr'
+  | 'integration'
+  | 'deployment';
+
+/**
+ * A pointer from a graph node to something on another page that touches the
+ * same element — an open review item, a gap, a drift alert, an NFR, and so on.
+ * This is what makes the explorer feel like one graph rather than 14 pages.
+ */
+export interface GraphCrossRef {
+  id: string;
+  kind: GraphCrossRefKind;
+  label: string;
+  detail: string;
+  route: string;
+}
+
+/**
+ * Everything the explorer shows when a node is clicked. Derived from the same
+ * fixtures the rest of the app reads, so a node's dossier can never disagree
+ * with the page that renders the same element.
+ */
+export interface GraphNodeDetail {
+  /** One-paragraph description of what this element is. */
+  summary: string;
+  /** Kind-specific facts, rendered as a definition grid. */
+  attributes: GraphNodeAttribute[];
+  /** Nested detail — steps, entities, goals, acceptance criteria, etc. */
+  sections: GraphNodeSection[];
+  /** Provenance + confidence, exactly as carried by the underlying element. */
+  metadata: GraphElementMetadata;
+  /** Where this element is rendered as a document view. */
+  route: string;
+  routeLabel: string;
+  /** Open questions and related items on other pages. */
+  crossRefs: GraphCrossRef[];
+}
+
 export interface GraphNode {
   id: string;
   label: string;
   kind: string;
   confidenceLevel: Confidence['level'];
+  /** Optional so an API-backed provider can serve a slim graph and lazy-load detail. */
+  detail?: GraphNodeDetail;
 }
 
 export interface GraphEdge {

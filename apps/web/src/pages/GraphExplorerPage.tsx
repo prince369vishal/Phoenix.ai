@@ -9,6 +9,7 @@ import { CONFIDENCE_COLORS } from '../components/confidence-badge.js';
 import { FullscreenDiagram } from '../components/fullscreen-diagram.js';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card.js';
 import { Badge } from '../components/ui/badge.js';
+import { NodeDetailPanel } from '../components/node-detail-panel.js';
 import { cn } from '../lib/utils.js';
 
 const KIND_ORDER = [
@@ -56,6 +57,7 @@ export function GraphExplorerPage(): JSX.Element {
       const row = rowCounters.get(n.kind) ?? 0;
       rowCounters.set(n.kind, row + 1);
       const matches = !filterQuery || n.label.toLowerCase().includes(filterQuery);
+      const isSelected = n.id === selected?.id;
       visibleNodeIds.add(n.id);
       flowNodes.push({
         id: n.id,
@@ -77,7 +79,7 @@ export function GraphExplorerPage(): JSX.Element {
         style: {
           width: 190,
           borderRadius: 6,
-          border: '1px solid hsl(214 32% 91%)',
+          border: isSelected ? '2px solid hsl(221 83% 53%)' : '1px solid hsl(214 32% 91%)',
           background: 'white',
           padding: 6,
         },
@@ -96,7 +98,7 @@ export function GraphExplorerPage(): JSX.Element {
       }));
 
     return { flowNodes, flowEdges };
-  }, [data, activeKinds, allKinds, filterText]);
+  }, [data, activeKinds, allKinds, filterText, selected]);
 
   if (loading) return <LoadingState label="Loading knowledge graph…" />;
   if (error) return <ErrorState message={error.message} />;
@@ -109,6 +111,10 @@ export function GraphExplorerPage(): JSX.Element {
       else next.add(kind);
       return next;
     });
+  }
+
+  function selectById(id: string): void {
+    setSelected(data?.nodes.find((n) => n.id === id) ?? null);
   }
 
   return (
@@ -159,27 +165,32 @@ export function GraphExplorerPage(): JSX.Element {
               </ReactFlow>
             </div>
 
-            <Card className={cn(isFullscreen && 'flex h-full flex-col overflow-hidden')}>
-              <CardHeader className={cn(isFullscreen && 'shrink-0')}>
-                <CardTitle>{selected ? selected.label : 'Select a node'}</CardTitle>
+            <Card
+              className={cn(
+                'flex flex-col overflow-hidden',
+                isFullscreen ? 'h-full' : 'max-h-[600px]',
+              )}
+            >
+              <CardHeader className="shrink-0">
+                <CardTitle className="text-base leading-snug">
+                  {selected ? selected.label : 'Select a node'}
+                </CardTitle>
               </CardHeader>
-              <CardContent className={cn(isFullscreen && 'flex-1 overflow-y-auto')}>
+              <CardContent className="flex-1 overflow-y-auto">
                 {selected ? (
-                  <div className="space-y-2 text-sm">
-                    <div>
-                      <span className="font-medium">Type: </span>
-                      {selected.kind}
-                    </div>
-                    <div>
-                      <span className="font-medium">Confidence: </span>
-                      {selected.confidenceLevel}
-                    </div>
-                  </div>
+                  <NodeDetailPanel
+                    node={selected}
+                    nodes={data?.nodes ?? []}
+                    edges={data?.edges ?? []}
+                    onSelectNode={selectById}
+                  />
                 ) : (
                   <p className="text-sm text-muted-foreground">
-                    Click any node to see its type and confidence. Use the type filters above to
-                    focus on one part of the graph, or the search box to highlight a specific
-                    element.
+                    Click any node to open its dossier — what it is, the facts extracted about it,
+                    how confident we are and why, the sources it came from, its neighbours in the
+                    graph, and anything about it still awaiting human review. Use the type filters
+                    above to focus on one part of the graph, or the search box to highlight a
+                    specific element.
                   </p>
                 )}
               </CardContent>
