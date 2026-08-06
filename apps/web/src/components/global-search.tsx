@@ -48,8 +48,8 @@ export function GlobalSearch(): JSX.Element {
 
   return (
     <div ref={containerRef} className="relative">
-      <div className="flex items-center gap-2 rounded-md border border-slate-700 bg-slate-800 px-3 py-1.5">
-        <Search className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+      <div className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5">
+        <Search className="h-3.5 w-3.5 shrink-0 text-slate-400" />
         <input
           value={query}
           onChange={(e) => {
@@ -62,7 +62,7 @@ export function GlobalSearch(): JSX.Element {
             if (e.key === 'Enter' && results[0]) goTo(results[0]);
           }}
           placeholder="Search…"
-          className="w-full bg-transparent text-sm text-slate-100 outline-none placeholder:text-slate-500"
+          className="w-full bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
         />
         {query ? (
           <button
@@ -73,15 +73,15 @@ export function GlobalSearch(): JSX.Element {
             }}
             aria-label="Clear search"
           >
-            <X className="h-3.5 w-3.5 text-slate-500" />
+            <X className="h-3.5 w-3.5 text-slate-400" />
           </button>
         ) : null}
       </div>
 
       {open && query.trim() ? (
-        <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-80 overflow-y-auto rounded-md border border-slate-700 bg-slate-800 shadow-lg">
+        <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-80 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg">
           {results.length === 0 ? (
-            <div className="px-3 py-3 text-sm text-slate-500">No matches for "{query}".</div>
+            <div className="px-3 py-3 text-sm text-slate-400">No matches for "{query}".</div>
           ) : (
             results.map((entry) => (
               <button
@@ -89,11 +89,11 @@ export function GlobalSearch(): JSX.Element {
                 type="button"
                 onClick={() => goTo(entry)}
                 className={cn(
-                  'flex w-full items-center justify-between px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-700',
+                  'flex w-full items-center justify-between px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50',
                 )}
               >
                 <span>{entry.label}</span>
-                <span className="text-xs text-slate-500">{entry.kind}</span>
+                <span className="text-xs text-slate-400">{entry.kind}</span>
               </button>
             ))
           )}

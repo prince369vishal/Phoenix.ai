@@ -24,6 +24,11 @@ export default {
           DEFAULT: 'hsl(var(--accent))',
           foreground: 'hsl(var(--accent-foreground))',
         },
+        kpmg: {
+          blue: 'hsl(var(--kpmg-blue))',
+          cobalt: 'hsl(var(--kpmg-cobalt))',
+          navy: 'hsl(var(--kpmg-navy))',
+        },
       },
       borderRadius: {
         lg: 'var(--radius)',

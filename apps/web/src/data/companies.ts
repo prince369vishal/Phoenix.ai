@@ -15,8 +15,8 @@ export interface CompanyOption {
     domains: number;
     integrations: number;
   };
-  /** Tailwind color token driving the card/badge accent. */
-  accent: 'violet' | 'emerald';
+  /** KPMG brand accent driving the card/badge color. */
+  accent: 'blue' | 'cobalt';
 }
 
 export const COMPANIES: CompanyOption[] = [
@@ -29,7 +29,7 @@ export const COMPANIES: CompanyOption[] = [
     description:
       'A mid-size e-commerce platform handling storefront browsing, checkout, payments, fraud screening, and fulfillment across web and mobile, integrated with a legacy ERP for finance and inventory reconciliation.',
     stats: { elements: 142, domains: 6, integrations: 5 },
-    accent: 'violet',
+    accent: 'cobalt',
   },
   {
     id: 'fintech',
@@ -40,7 +40,7 @@ export const COMPANIES: CompanyOption[] = [
     description:
       'A digital-first neobank offering checking/savings accounts, card issuing, and P2P payments, integrated with a third-party core banking ledger, card processor, KYC/AML vendor, and ACH payment rail.',
     stats: { elements: 131, domains: 6, integrations: 5 },
-    accent: 'emerald',
+    accent: 'blue',
   },
 ];
 
