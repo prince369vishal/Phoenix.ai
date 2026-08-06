@@ -1,5 +1,5 @@
-import type { Journey, Persona } from '../types.js';
-import { conf, meta, prov } from './helpers.js';
+import type { Journey, Persona } from '../../types.js';
+import { conf, meta, prov } from '../helpers.js';
 
 export const personas: Persona[] = [
   {

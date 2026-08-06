@@ -1,0 +1,38 @@
+import type { DeploymentNode } from '../../types.js';
+import { conf, meta, prov } from '../helpers.js';
+
+export const deploymentNodes: DeploymentNode[] = [
+  {
+    id: 'env-production',
+    kind: 'environment',
+    name: 'Production (aws us-east-1)',
+    metadata: meta(
+      [prov('infra://terraform/production', 'source-code', 'extraction-engine', 4)],
+      conf('high', 0.91),
+    ),
+  },
+  {
+    id: 'env-staging',
+    kind: 'environment',
+    name: 'Staging (aws us-east-1)',
+    metadata: meta(
+      [prov('infra://terraform/staging', 'source-code', 'extraction-engine', 4)],
+      conf('high', 0.87),
+    ),
+  },
+  // Production instances
+  { id: 'inst-banking-app-prod', kind: 'instance', name: 'banking-web', environmentId: 'env-production', containerId: 'ctr-banking-app', runtime: 'ECS Fargate', scale: '5 tasks', metadata: meta([prov('infra://terraform/production', 'source-code', 'extraction-engine', 4)], conf('high', 0.89)) },
+  { id: 'inst-onboarding-prod', kind: 'instance', name: 'onboarding-service', environmentId: 'env-production', containerId: 'ctr-onboarding', runtime: 'ECS Fargate', scale: '3 tasks', metadata: meta([prov('infra://terraform/production', 'source-code', 'extraction-engine', 4)], conf('high', 0.88)) },
+  { id: 'inst-ledger-prod', kind: 'instance', name: 'ledger-adapter', environmentId: 'env-production', containerId: 'ctr-ledger-adapter', runtime: 'ECS Fargate', scale: '3 tasks', metadata: meta([prov('infra://terraform/production', 'source-code', 'extraction-engine', 4)], conf('medium', 0.55, 'Instance count confirmed; the underlying runtime/language for this service is disputed (see Review).')) },
+  { id: 'inst-card-issuing-prod', kind: 'instance', name: 'card-issuing-service', environmentId: 'env-production', containerId: 'ctr-card-issuing', runtime: 'ECS Fargate', scale: '2 tasks', metadata: meta([prov('infra://terraform/production', 'source-code', 'extraction-engine', 4)], conf('high', 0.86)) },
+  { id: 'inst-payments-prod', kind: 'instance', name: 'payments-service', environmentId: 'env-production', containerId: 'ctr-payments', runtime: 'ECS Fargate', scale: '4 tasks', metadata: meta([prov('infra://terraform/production', 'source-code', 'extraction-engine', 4)], conf('high', 0.87)) },
+  { id: 'inst-fraud-aml-prod', kind: 'instance', name: 'fraud-aml-service', environmentId: 'env-production', containerId: 'ctr-fraud-aml', runtime: 'AWS Lambda', scale: 'on-demand', metadata: meta([prov('infra://terraform/production', 'source-code', 'extraction-engine', 4)], conf('medium', 0.6)) },
+  { id: 'inst-credit-prod', kind: 'instance', name: 'credit-decision-service', environmentId: 'env-production', containerId: 'ctr-credit-decision', runtime: 'ECS Fargate', scale: '1 task', metadata: meta([prov('infra://terraform/production', 'source-code', 'extraction-engine', 4)], conf('low', 0.42, 'Bureau feed migration status contradicts what is deployed — see Review.')) },
+  { id: 'inst-notification-prod', kind: 'instance', name: 'notification-service', environmentId: 'env-production', containerId: 'ctr-notification', runtime: 'ECS Fargate', scale: '2 tasks', metadata: meta([prov('infra://terraform/production', 'source-code', 'extraction-engine', 4)], conf('high', 0.85)) },
+  { id: 'inst-db-prod', kind: 'instance', name: 'primary-database', environmentId: 'env-production', containerId: 'ctr-db', runtime: 'RDS PostgreSQL, Multi-AZ', scale: 'db.r6g.2xlarge', metadata: meta([prov('infra://terraform/production', 'source-code', 'extraction-engine', 4)], conf('high', 0.95)) },
+  { id: 'inst-kafka-prod', kind: 'instance', name: 'event-bus', environmentId: 'env-production', containerId: 'ctr-event-bus', runtime: 'MSK (Kafka)', scale: '3 brokers', metadata: meta([prov('infra://terraform/production', 'source-code', 'extraction-engine', 4)], conf('high', 0.9)) },
+  // Staging instances (subset, single-instance each)
+  { id: 'inst-banking-app-staging', kind: 'instance', name: 'banking-web', environmentId: 'env-staging', containerId: 'ctr-banking-app', runtime: 'ECS Fargate', scale: '1 task', metadata: meta([prov('infra://terraform/staging', 'source-code', 'extraction-engine', 4)], conf('high', 0.84)) },
+  { id: 'inst-payments-staging', kind: 'instance', name: 'payments-service', environmentId: 'env-staging', containerId: 'ctr-payments', runtime: 'ECS Fargate', scale: '1 task', metadata: meta([prov('infra://terraform/staging', 'source-code', 'extraction-engine', 4)], conf('high', 0.84)) },
+  { id: 'inst-db-staging', kind: 'instance', name: 'primary-database', environmentId: 'env-staging', containerId: 'ctr-db', runtime: 'RDS PostgreSQL, single-AZ', scale: 'db.t4g.large', metadata: meta([prov('infra://terraform/staging', 'source-code', 'extraction-engine', 4)], conf('high', 0.84)) },
+];

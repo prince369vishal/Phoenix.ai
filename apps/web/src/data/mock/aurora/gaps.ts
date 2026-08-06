@@ -1,4 +1,4 @@
-import type { GapItem } from '../types.js';
+import type { GapItem } from '../../types.js';
 
 export const gapItems: GapItem[] = [
   {

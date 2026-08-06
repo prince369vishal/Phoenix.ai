@@ -1,27 +1,50 @@
 import type {
+  C4Edge,
+  C4Node,
+  Domain,
+  DriftAlert,
+  Epic,
+  ExecutionFlow,
+  DeploymentNode,
+  GapItem,
   GraphCrossRef,
   GraphEdge,
   GraphNode,
   GraphNodeAttribute,
   GraphNodeDetail,
   GraphNodeSection,
+  Integration,
+  Journey,
+  NonFunctionalRequirement,
+  Persona,
+  ReviewItem,
+  SystemSummary,
 } from '../types.js';
-import {
-  containerEdges,
-  containerNodes,
-  domains,
-  driftAlerts,
-  executionFlows,
-  reviewItems,
-  systemSummary,
-} from './fixtures.js';
-import { personas, journeys } from './personas.js';
-import { epics } from './epics.js';
-import { deploymentNodes } from './deployment.js';
-import { nonFunctionalRequirements } from './nfrs.js';
-import { integrations } from './integrations.js';
-import { gapItems } from './gaps.js';
 import { conf, meta, prov } from './helpers.js';
+
+/**
+ * Everything buildFullGraph() needs, sourced from one company's fixtures.
+ * Keeping this generic (rather than importing a fixed `./fixtures.js`)
+ * lets the same graph-building logic run over any company's mock dataset.
+ */
+export interface GraphBundle {
+  /** Provenance source id for the root "System" node, e.g. 'repo://aurora-commerce'. */
+  systemSourceUri: string;
+  systemSummary: SystemSummary;
+  containerNodes: C4Node[];
+  containerEdges: C4Edge[];
+  domains: Domain[];
+  driftAlerts: DriftAlert[];
+  executionFlows: ExecutionFlow[];
+  reviewItems: ReviewItem[];
+  personas: Persona[];
+  journeys: Journey[];
+  epics: Epic[];
+  deploymentNodes: DeploymentNode[];
+  nonFunctionalRequirements: NonFunctionalRequirement[];
+  integrations: Integration[];
+  gapItems: GapItem[];
+}
 
 // ---------------------------------------------------------------------------
 // Cross-reference resolution
@@ -43,10 +66,10 @@ function mentions(haystack: string, needle: string): boolean {
   return new RegExp(`\\b${escaped}\\b`, 'i').test(haystack);
 }
 
-function crossRefsFor(label: string, nodeId: string): GraphCrossRef[] {
+function crossRefsFor(bundle: GraphBundle, label: string, nodeId: string): GraphCrossRef[] {
   const refs: GraphCrossRef[] = [];
 
-  for (const item of reviewItems) {
+  for (const item of bundle.reviewItems) {
     if (!mentions(item.elementName, label)) continue;
     refs.push({
       id: item.id,
@@ -60,7 +83,7 @@ function crossRefsFor(label: string, nodeId: string): GraphCrossRef[] {
     });
   }
 
-  for (const alert of driftAlerts) {
+  for (const alert of bundle.driftAlerts) {
     if (!mentions(alert.elementName, label)) continue;
     refs.push({
       id: alert.id,
@@ -71,7 +94,7 @@ function crossRefsFor(label: string, nodeId: string): GraphCrossRef[] {
     });
   }
 
-  for (const gap of gapItems) {
+  for (const gap of bundle.gapItems) {
     if (!mentions(gap.description, label) && !mentions(gap.area, label)) continue;
     refs.push({
       id: gap.id,
@@ -82,7 +105,7 @@ function crossRefsFor(label: string, nodeId: string): GraphCrossRef[] {
     });
   }
 
-  for (const nfr of nonFunctionalRequirements) {
+  for (const nfr of bundle.nonFunctionalRequirements) {
     if (!nfr.appliesTo.some((target) => mentions(target, label) || mentions(label, target))) continue;
     refs.push({
       id: nfr.id,
@@ -93,7 +116,7 @@ function crossRefsFor(label: string, nodeId: string): GraphCrossRef[] {
     });
   }
 
-  for (const integration of integrations) {
+  for (const integration of bundle.integrations) {
     if (!mentions(integration.name, label) && !mentions(label, integration.name)) continue;
     refs.push({
       id: integration.id,
@@ -104,9 +127,9 @@ function crossRefsFor(label: string, nodeId: string): GraphCrossRef[] {
     });
   }
 
-  for (const instance of deploymentNodes) {
+  for (const instance of bundle.deploymentNodes) {
     if (instance.kind !== 'instance' || instance.containerId !== nodeId) continue;
-    const environment = deploymentNodes.find((n) => n.id === instance.environmentId);
+    const environment = bundle.deploymentNodes.find((n) => n.id === instance.environmentId);
     refs.push({
       id: instance.id,
       kind: 'deployment',
@@ -120,6 +143,7 @@ function crossRefsFor(label: string, nodeId: string): GraphCrossRef[] {
 }
 
 function detail(
+  bundle: GraphBundle,
   args: Omit<GraphNodeDetail, 'crossRefs' | 'attributes' | 'sections'> & {
     attributes?: GraphNodeAttribute[];
     sections?: GraphNodeSection[];
@@ -132,7 +156,7 @@ function detail(
     ...rest,
     attributes,
     sections: sections.filter((s) => s.items.length > 0),
-    crossRefs: crossRefsFor(label, nodeId),
+    crossRefs: crossRefsFor(bundle, label, nodeId),
   };
 }
 
@@ -146,34 +170,37 @@ function detail(
  * Each node also carries a full dossier (`detail`) so clicking a node in the
  * explorer answers: what is it, what do we know about it, how confident are we
  * and why, which sources it came from, and what still needs human attention.
+ *
+ * Generic over `GraphBundle` so it can build the explorer graph for any
+ * company's mock dataset from the same logic.
  */
-function buildFullGraph(): { nodes: GraphNode[]; edges: GraphEdge[] } {
+export function buildFullGraph(bundle: GraphBundle): { nodes: GraphNode[]; edges: GraphEdge[] } {
   const nodes: GraphNode[] = [];
   const edges: GraphEdge[] = [];
 
   // --- System -------------------------------------------------------------
   nodes.push({
-    id: systemSummary.id,
-    label: systemSummary.name,
+    id: bundle.systemSummary.id,
+    label: bundle.systemSummary.name,
     kind: 'System',
     confidenceLevel: 'high',
-    detail: detail({
-      nodeId: systemSummary.id,
-      label: systemSummary.name,
-      summary: systemSummary.description,
+    detail: detail(bundle, {
+      nodeId: bundle.systemSummary.id,
+      label: bundle.systemSummary.name,
+      summary: bundle.systemSummary.description,
       attributes: [
-        { label: 'Tags', value: systemSummary.tags.join(', ') },
-        { label: 'Elements extracted', value: String(systemSummary.totalElements) },
-        { label: 'Coverage', value: `${Math.round(systemSummary.coverageScore * 100)}%` },
-        { label: 'Pending review', value: `${systemSummary.pendingReviewCount} items` },
-        { label: 'Open drift alerts', value: String(systemSummary.driftAlertCount) },
+        { label: 'Tags', value: bundle.systemSummary.tags.join(', ') },
+        { label: 'Elements extracted', value: String(bundle.systemSummary.totalElements) },
+        { label: 'Coverage', value: `${Math.round(bundle.systemSummary.coverageScore * 100)}%` },
+        { label: 'Pending review', value: `${bundle.systemSummary.pendingReviewCount} items` },
+        { label: 'Open drift alerts', value: String(bundle.systemSummary.driftAlertCount) },
         {
           label: 'Last analyzed',
-          value: new Date(systemSummary.lastAnalyzedAt).toLocaleString(),
+          value: new Date(bundle.systemSummary.lastAnalyzedAt).toLocaleString(),
         },
       ],
       metadata: meta(
-        [prov('repo://aurora-commerce', 'source-code', 'orchestration', 2)],
+        [prov(bundle.systemSourceUri, 'source-code', 'orchestration', 2)],
         conf('high', 0.97, 'Root of the graph — asserted by the ingestion run itself.'),
       ),
       route: '/',
@@ -182,27 +209,27 @@ function buildFullGraph(): { nodes: GraphNode[]; edges: GraphEdge[] } {
   });
 
   // --- Containers ---------------------------------------------------------
-  for (const c of containerNodes) {
-    const talksTo = containerEdges
+  for (const c of bundle.containerNodes) {
+    const talksTo = bundle.containerEdges
       .filter((e) => e.source === c.id)
-      .map((e) => `${e.label} → ${containerNodes.find((n) => n.id === e.target)?.name ?? e.target}`);
-    const calledBy = containerEdges
+      .map((e) => `${e.label} → ${bundle.containerNodes.find((n) => n.id === e.target)?.name ?? e.target}`);
+    const calledBy = bundle.containerEdges
       .filter((e) => e.target === c.id)
-      .map((e) => `${containerNodes.find((n) => n.id === e.source)?.name ?? e.source} — ${e.label}`);
+      .map((e) => `${bundle.containerNodes.find((n) => n.id === e.source)?.name ?? e.source} — ${e.label}`);
 
     nodes.push({
       id: c.id,
       label: c.name,
       kind: 'Container',
       confidenceLevel: c.metadata.confidence.level,
-      detail: detail({
+      detail: detail(bundle, {
         nodeId: c.id,
         label: c.name,
         summary: c.description,
         attributes: [
           { label: 'C4 level', value: c.level },
           { label: 'Technology', value: c.technology ?? 'Not determined from any source' },
-          { label: 'Part of', value: systemSummary.name },
+          { label: 'Part of', value: bundle.systemSummary.name },
         ],
         sections: [
           { label: 'Outbound dependencies', items: talksTo },
@@ -213,20 +240,20 @@ function buildFullGraph(): { nodes: GraphNode[]; edges: GraphEdge[] } {
         routeLabel: 'Architecture (C4)',
       }),
     });
-    edges.push({ id: `sys-${c.id}`, source: systemSummary.id, target: c.id, label: 'contains' });
+    edges.push({ id: `sys-${c.id}`, source: bundle.systemSummary.id, target: c.id, label: 'contains' });
   }
-  for (const e of containerEdges) {
+  for (const e of bundle.containerEdges) {
     edges.push({ id: e.id, source: e.source, target: e.target, label: e.label });
   }
 
   // --- Domains & aggregates ----------------------------------------------
-  for (const d of domains) {
+  for (const d of bundle.domains) {
     nodes.push({
       id: d.id,
       label: d.name,
       kind: 'Domain',
       confidenceLevel: d.metadata.confidence.level,
-      detail: detail({
+      detail: detail(bundle, {
         nodeId: d.id,
         label: d.name,
         summary: d.description,
@@ -250,7 +277,7 @@ function buildFullGraph(): { nodes: GraphNode[]; edges: GraphEdge[] } {
     });
 
     for (const a of d.aggregates) {
-      const touchedBy = executionFlows.flatMap((f) =>
+      const touchedBy = bundle.executionFlows.flatMap((f) =>
         f.steps
           .filter(
             (s) =>
@@ -265,7 +292,7 @@ function buildFullGraph(): { nodes: GraphNode[]; edges: GraphEdge[] } {
         label: a.name,
         kind: 'Aggregate',
         confidenceLevel: a.metadata.confidence.level,
-        detail: detail({
+        detail: detail(bundle, {
           nodeId: a.id,
           label: a.name,
           summary: `Aggregate root in the ${d.name} domain, grouping ${a.entities.length} entit${a.entities.length === 1 ? 'y' : 'ies'} that change together under a single consistency boundary.`,
@@ -288,14 +315,14 @@ function buildFullGraph(): { nodes: GraphNode[]; edges: GraphEdge[] } {
   }
 
   // --- Personas -----------------------------------------------------------
-  for (const p of personas) {
-    const theirJourneys = journeys.filter((j) => j.personaId === p.id);
+  for (const p of bundle.personas) {
+    const theirJourneys = bundle.journeys.filter((j) => j.personaId === p.id);
     nodes.push({
       id: p.id,
       label: p.name,
       kind: 'Persona',
       confidenceLevel: p.metadata.confidence.level,
-      detail: detail({
+      detail: detail(bundle, {
         nodeId: p.id,
         label: p.name,
         summary: `${p.role} who interacts with the system across ${theirJourneys.length} mapped journey${theirJourneys.length === 1 ? '' : 's'}.`,
@@ -316,18 +343,18 @@ function buildFullGraph(): { nodes: GraphNode[]; edges: GraphEdge[] } {
   }
 
   // --- Journeys -----------------------------------------------------------
-  for (const j of journeys) {
-    const persona = personas.find((p) => p.id === j.personaId);
+  for (const j of bundle.journeys) {
+    const persona = bundle.personas.find((p) => p.id === j.personaId);
     const realisedBy = j.flowIds
-      .map((id) => executionFlows.find((f) => f.id === id))
-      .filter((f): f is (typeof executionFlows)[number] => Boolean(f));
+      .map((id) => bundle.executionFlows.find((f) => f.id === id))
+      .filter((f): f is (typeof bundle.executionFlows)[number] => Boolean(f));
 
     nodes.push({
       id: j.id,
       label: j.name,
       kind: 'Journey',
       confidenceLevel: j.metadata.confidence.level,
-      detail: detail({
+      detail: detail(bundle, {
         nodeId: j.id,
         label: j.name,
         summary: j.description,
@@ -353,7 +380,7 @@ function buildFullGraph(): { nodes: GraphNode[]; edges: GraphEdge[] } {
     });
     edges.push({ id: `${j.personaId}-${j.id}`, source: j.personaId, target: j.id, label: 'experiences' });
     for (const flowId of j.flowIds) {
-      const flow = executionFlows.find((f) => f.id === flowId);
+      const flow = bundle.executionFlows.find((f) => f.id === flowId);
       if (flow) {
         edges.push({ id: `${j.id}-${flowId}`, source: j.id, target: flowId, label: 'realised by' });
       }
@@ -361,7 +388,7 @@ function buildFullGraph(): { nodes: GraphNode[]; edges: GraphEdge[] } {
   }
 
   // --- Execution flows ----------------------------------------------------
-  for (const f of executionFlows) {
+  for (const f of bundle.executionFlows) {
     const reads = [...new Set(f.steps.flatMap((s) => s.readsEntities))];
     const writes = [...new Set(f.steps.flatMap((s) => s.writesEntities))];
     const weakSteps = f.steps.filter(
@@ -373,7 +400,7 @@ function buildFullGraph(): { nodes: GraphNode[]; edges: GraphEdge[] } {
       label: f.name,
       kind: 'Flow',
       confidenceLevel: f.metadata.confidence.level,
-      detail: detail({
+      detail: detail(bundle, {
         nodeId: f.id,
         label: f.name,
         summary: f.description,
@@ -404,14 +431,14 @@ function buildFullGraph(): { nodes: GraphNode[]; edges: GraphEdge[] } {
   }
 
   // --- Backlog: epics → features → stories --------------------------------
-  for (const e of epics) {
+  for (const e of bundle.epics) {
     const storyCount = e.features.reduce((sum, feature) => sum + feature.stories.length, 0);
     nodes.push({
       id: e.id,
       label: e.name,
       kind: 'Epic',
       confidenceLevel: e.metadata.confidence.level,
-      detail: detail({
+      detail: detail(bundle, {
         nodeId: e.id,
         label: e.name,
         summary: e.description,
@@ -437,7 +464,7 @@ function buildFullGraph(): { nodes: GraphNode[]; edges: GraphEdge[] } {
         label: feature.name,
         kind: 'Feature',
         confidenceLevel: feature.metadata.confidence.level,
-        detail: detail({
+        detail: detail(bundle, {
           nodeId: feature.id,
           label: feature.name,
           summary: feature.description,
@@ -465,7 +492,7 @@ function buildFullGraph(): { nodes: GraphNode[]; edges: GraphEdge[] } {
           label: story.title,
           kind: 'Story',
           confidenceLevel: story.metadata.confidence.level,
-          detail: detail({
+          detail: detail(bundle, {
             nodeId: story.id,
             label: story.title,
             summary: story.description,
@@ -497,5 +524,3 @@ function buildFullGraph(): { nodes: GraphNode[]; edges: GraphEdge[] } {
 
   return { nodes, edges };
 }
-
-export const fullGraph = buildFullGraph();

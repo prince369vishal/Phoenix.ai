@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
 import { cn } from '../lib/utils.js';
 import { GlobalSearch } from '../components/global-search.js';
+import { getCompany, type CompanyId } from '../data/index.js';
 import {
   LayoutDashboard,
   Share2,
@@ -17,6 +18,7 @@ import {
   History,
   ClipboardCheck,
   Bot,
+  ArrowLeftRight,
 } from 'lucide-react';
 
 interface NavItem {
@@ -63,8 +65,15 @@ const NAV_SECTIONS: Array<{ title: string | null; items: NavItem[] }> = [
   },
 ];
 
-export function AppShell({ children }: { children: ReactNode }): JSX.Element {
+export function AppShell({
+  children,
+  companyId,
+}: {
+  children: ReactNode;
+  companyId?: CompanyId;
+}): JSX.Element {
   const dataSource = import.meta.env.VITE_DATA_SOURCE ?? 'mock';
+  const company = companyId ? getCompany(companyId) : null;
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground">
@@ -73,7 +82,9 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
           <div className="text-sm font-semibold leading-tight text-slate-100">
             Phoenix.ai
           </div>
-          <div className="text-xs text-slate-400">Platform review UI</div>
+          <div className="text-xs text-slate-400">
+            {company ? `Reverse engineering — ${company.name}` : 'Platform review UI'}
+          </div>
         </div>
         <div className="border-b border-slate-800 p-3">
           <GlobalSearch />
@@ -109,7 +120,14 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
             </div>
           ))}
         </nav>
-        <div className="border-t border-slate-800 p-3">
+        <div className="space-y-2 border-t border-slate-800 p-3">
+          <NavLink
+            to="/select"
+            className="flex items-center justify-center gap-1.5 rounded-md border border-slate-700 bg-slate-800/60 px-2.5 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:bg-slate-800 hover:text-slate-100"
+          >
+            <ArrowLeftRight className="h-3.5 w-3.5" />
+            Switch company
+          </NavLink>
           <div
             className={cn(
               'w-full rounded-full border px-2.5 py-1 text-center text-xs font-medium',

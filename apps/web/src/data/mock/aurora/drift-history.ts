@@ -1,4 +1,4 @@
-import type { DriftRun } from '../types.js';
+import type { DriftRun } from '../../types.js';
 import { driftAlerts } from './fixtures.js';
 
 export const driftHistory: DriftRun[] = [

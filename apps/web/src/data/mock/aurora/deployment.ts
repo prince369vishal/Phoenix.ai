@@ -1,5 +1,5 @@
-import type { DeploymentNode } from '../types.js';
-import { conf, meta, prov } from './helpers.js';
+import type { DeploymentNode } from '../../types.js';
+import { conf, meta, prov } from '../helpers.js';
 
 export const deploymentNodes: DeploymentNode[] = [
   {

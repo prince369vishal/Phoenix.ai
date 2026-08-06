@@ -6,8 +6,8 @@ import type {
   ExecutionFlow,
   ReviewItem,
   SystemSummary,
-} from '../types.js';
-import { conf, meta, prov } from './helpers.js';
+} from '../../types.js';
+import { conf, meta, prov } from '../helpers.js';
 
 export const systemSummary: SystemSummary = {
   id: 'aurora-commerce',
